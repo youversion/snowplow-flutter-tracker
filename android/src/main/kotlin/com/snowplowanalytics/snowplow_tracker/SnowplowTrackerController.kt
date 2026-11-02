@@ -18,6 +18,7 @@ import com.snowplowanalytics.snowplow.Snowplow;
 import com.snowplowanalytics.snowplow.configuration.Configuration;
 import com.snowplowanalytics.snowplow.event.Event
 import com.snowplowanalytics.snowplow_tracker.readers.configurations.DefaultTrackerConfiguration
+import com.snowplowanalytics.snowplow_tracker.readers.configurations.PluginConfigurationReader
 import com.snowplowanalytics.snowplow_tracker.readers.messages.*
 import com.snowplowanalytics.snowplow_tracker.readers.events.SelfDescribingJsonReader
 import com.snowplowanalytics.snowplow.globalcontexts.GlobalContext
@@ -27,6 +28,9 @@ object SnowplowTrackerController {
 
     /// Receives the arguments of the afterTrack callbacks to send to Dart
     var afterTrackListener: ((Map<String, Any?>) -> Unit)? = null
+
+    /// Entities of plugins by tracker namespace and plugin identifier, only accessed on the main thread
+    private val pluginEntities: MutableMap<Pair<String, String>, PluginEntitiesStore> = mutableMapOf()
 
     fun createTracker(messageReader: CreateTrackerMessageReader, context: Context) {
         val controllers: MutableList<Configuration> = mutableListOf()
@@ -56,8 +60,12 @@ object SnowplowTrackerController {
         val sessionConfigReader = messageReader.sessionConfig
         sessionConfigReader?.let { controllers.add(it.toConfiguration()) }
 
+        pluginEntities.keys.removeAll { it.first == messageReader.namespace }
         messageReader.plugins.forEach {
-            controllers.add(it.toConfiguration(afterTrackCallback(messageReader.namespace)))
+            controllers.add(it.toConfiguration(
+                afterTrackCallback(messageReader.namespace),
+                entitiesStore(messageReader.namespace, it)
+            ))
         }
 
         Snowplow.createTracker(
@@ -133,14 +141,34 @@ object SnowplowTrackerController {
         val trackerController = Snowplow.getTracker(messageReader.tracker)
 
         trackerController?.plugins?.addPlugin(
-            messageReader.plugin.toConfiguration(afterTrackCallback(messageReader.tracker))
+            messageReader.plugin.toConfiguration(
+                afterTrackCallback(messageReader.tracker),
+                entitiesStore(messageReader.tracker, messageReader.plugin)
+            )
         )
+    }
+
+    fun setPluginEntities(messageReader: SetPluginEntitiesMessageReader) {
+        pluginEntities[Pair(messageReader.tracker, messageReader.identifier)]?.set(messageReader.entities)
     }
 
     fun removePlugin(messageReader: RemovePluginMessageReader) {
         val trackerController = Snowplow.getTracker(messageReader.tracker)
 
+        pluginEntities.remove(Pair(messageReader.tracker, messageReader.identifier))
         trackerController?.plugins?.removePlugin(messageReader.identifier)
+    }
+
+    /// Returns the store for the plugin's entities, keeping the history if the plugin is replaced
+    private fun entitiesStore(namespace: String, plugin: PluginConfigurationReader): PluginEntitiesStore? {
+        val key = Pair(namespace, plugin.identifier)
+        val entities = plugin.entities
+        if (entities == null) {
+            pluginEntities.remove(key)
+            return null
+        }
+        return pluginEntities[key]?.also { it.set(entities) }
+            ?: PluginEntitiesStore(entities).also { pluginEntities[key] = it }
     }
 
     private fun afterTrackCallback(namespace: String): (String, InspectableEvent) -> Unit {

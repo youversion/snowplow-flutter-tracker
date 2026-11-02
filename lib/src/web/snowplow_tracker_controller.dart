@@ -27,7 +27,7 @@ class SnowplowTrackerController {
   /// Plugins already added to the JavaScript tracker by tracker namespace.
   ///
   /// The JavaScript tracker can't remove plugins, so they are added once and
-  /// the Dart side decides which callback, if any, to call.
+  /// read the current afterTrack listener and entities when events are tracked.
   static final Map<String, Set<String>> _addedPlugins = {};
 
   static void createTracker(ConfigurationReader configuration) {
@@ -62,24 +62,69 @@ class SnowplowTrackerController {
     }
   }
 
+  /// afterTrack listeners of plugins by tracker namespace and plugin identifier.
+  static final Map<String, Map<String, void Function(Map<String, Object?>)>>
+      _afterTrackListeners = {};
+
+  /// Entities of plugins by tracker namespace and plugin identifier.
+  ///
+  /// The JavaScript plugins read them when events are tracked, so events get
+  /// the entities set when they were tracked.
+  static final Map<String, Map<String, List<Object?>>> _pluginEntities = {};
+
   /// Adds a JavaScript plugin that sends the arguments of its afterTrack
-  /// callbacks to [afterTrackListener].
+  /// callbacks to [afterTrackListener] and adds the [entities] to events.
   static void addPlugin(String tracker, String identifier,
-      void Function(Map<String, Object?>) afterTrackListener) {
+      {void Function(Map<String, Object?>)? afterTrackListener,
+      List<Object?>? entities}) {
+    final listeners = _afterTrackListeners.putIfAbsent(tracker, () => {});
+    if (afterTrackListener == null) {
+      listeners.remove(identifier);
+    } else {
+      listeners[identifier] = afterTrackListener;
+    }
+    final pluginEntities = _pluginEntities.putIfAbsent(tracker, () => {});
+    if (entities == null) {
+      pluginEntities.remove(identifier);
+    } else {
+      pluginEntities[identifier] = entities;
+    }
+
     if (!_addedPlugins.putIfAbsent(tracker, () => {}).add(identifier)) {
       return;
     }
 
     final plugin = JSObject();
     plugin['afterTrack'] = ((JSAny? payload) {
+      final listener = _afterTrackListeners[tracker]?[identifier];
+      if (listener == null) {
+        return;
+      }
       final event = InspectableEventReader.fromPayload(
           payload.dartify() as Map<Object?, Object?>? ?? const {});
-      afterTrackListener(
-          {'tracker': tracker, 'plugin': identifier, 'event': event});
+      listener({'tracker': tracker, 'plugin': identifier, 'event': event});
     }).toJS;
+    plugin['contexts'] = (() =>
+        (_pluginEntities[tracker]?[identifier] ?? const []).jsify()).toJS;
     final pluginFactory = JSObject();
     pluginFactory['create'] = (() => plugin).toJS;
     snowplow('addPlugin:$tracker', pluginFactory, 'create'.toJS);
+  }
+
+  /// Replaces the entities of a plugin that was added with entities.
+  static void setPluginEntities(
+      String tracker, String identifier, List<Object?> entities) {
+    final pluginEntities = _pluginEntities[tracker];
+    if (pluginEntities?.containsKey(identifier) == true) {
+      pluginEntities![identifier] = entities;
+    }
+  }
+
+  /// Stops calling the plugin's afterTrack listener and adding its entities,
+  /// as the JavaScript tracker can't remove plugins.
+  static void removePlugin(String tracker, String identifier) {
+    _afterTrackListeners[tracker]?.remove(identifier);
+    _pluginEntities[tracker]?.remove(identifier);
   }
 
   static void trackEvent(EventMessageReader message) {

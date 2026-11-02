@@ -14,15 +14,32 @@ import SnowplowTracker
 struct PluginConfigurationReader: Decodable {
     let identifier: String
     let afterTrack: Bool?
+    let entities: [SelfDescribingJsonReader]?
 }
 
 extension PluginConfigurationReader {
-    func toConfiguration(afterTrackCallback: @escaping (String, InspectableEvent) -> Void) -> PluginConfiguration {
+    func toConfiguration(afterTrackCallback: @escaping (String, InspectableEvent) -> Void,
+                         entities: [SelfDescribingJson]?) -> PluginConfiguration {
         let plugin = PluginConfiguration(identifier: identifier)
         if afterTrack == true {
             let identifier = self.identifier
             _ = plugin.afterTrack { event in afterTrackCallback(identifier, event) }
         }
+        if let entities = entities {
+            _ = plugin.entities { _ in entities }
+        }
         return plugin
+    }
+
+    /// Reads the entities from the plugin arguments, as the reader only decodes their schemas
+    static func entities(arguments: [String: Any]) -> [SelfDescribingJson]? {
+        guard let entitiesArgs = arguments["entities"] as? [[String: Any]] else {
+            return nil
+        }
+        return entitiesArgs.compactMap { entityArgs in
+            (entityArgs["schema"] as? String).flatMap { schema in
+                SelfDescribingJsonReader(schema: schema).toSelfDescribingJson(arguments: entityArgs)
+            }
+        }
     }
 }

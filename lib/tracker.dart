@@ -60,6 +60,14 @@ class SnowplowTracker {
     await Snowplow.addPlugin(plugin, tracker: namespace);
   }
 
+  /// Replaces the context entities of the plugin with the given [identifier].
+  ///
+  /// See [Snowplow.setPluginEntities].
+  Future<void> setPluginEntities(
+      String identifier, List<SelfDescribing> entities) async {
+    await Snowplow.setPluginEntities(identifier, entities, tracker: namespace);
+  }
+
   /// Removes the plugin with the given [identifier].
   Future<void> removePlugin(String identifier) async {
     await Snowplow.removePlugin(identifier, tracker: namespace);
