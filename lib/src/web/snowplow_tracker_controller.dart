@@ -32,6 +32,14 @@ class SnowplowTrackerController {
   static final Map<String, Set<String>> _addedPlugins = {};
 
   static void createTracker(ConfigurationReader configuration) {
+    // The JavaScript tracker keeps an existing tracker and its plugins, so
+    // only the plugins in the new configuration keep their listeners and
+    // entities.
+    final namespace = configuration.namespace;
+    _afterTrackListeners.remove(namespace);
+    _pluginsWithEntities.remove(namespace);
+    _updateEntities(() => _pluginEntities.remove(namespace));
+
     final options = configuration.getTrackerOptions();
     snowplow('newTracker', configuration.namespace.toJS,
         configuration.networkConfig.endpoint.toJS, options.jsify());
@@ -67,11 +75,41 @@ class SnowplowTrackerController {
   static final Map<String, Map<String, void Function(Map<String, Object?>)>>
       _afterTrackListeners = {};
 
-  /// Entities of plugins by tracker namespace and plugin identifier.
+  /// Entities of plugins by tracker namespace and plugin identifier, as read
+  /// by the JavaScript plugins when events are tracked.
   ///
-  /// The JavaScript plugins read them when events are tracked, so events get
-  /// the entities set when they were tracked.
+  /// Changes go through [_updateEntities], so they apply in the same order as
+  /// the tracking commands.
   static final Map<String, Map<String, List<Object?>>> _pluginEntities = {};
+
+  /// Identifiers of the plugins with entities by tracker namespace, including
+  /// changes that [_pluginEntities] hasn't applied yet.
+  static final Map<String, Set<String>> _pluginsWithEntities = {};
+
+  /// JavaScript tracker command that applies a change in [_pendingUpdates].
+  ///
+  /// It's registered by the first plugin added, as plugins can add commands.
+  static const _applyUpdateCommand = 'snowplowFlutterApplyPluginUpdate';
+  static bool _applyUpdateCommandRegistered = false;
+  static final Map<int, void Function()> _pendingUpdates = {};
+  static int _nextUpdateId = 0;
+
+  /// Applies [update] to [_pluginEntities] in the order of the tracking
+  /// commands.
+  ///
+  /// The JavaScript tracker queues commands while its script or a plugin
+  /// script loads. Events tracked before the update but still queued then
+  /// keep the previous entities.
+  static void _updateEntities(void Function() update) {
+    if (!_applyUpdateCommandRegistered) {
+      // no JavaScript plugin reads the entities yet
+      update();
+      return;
+    }
+    final id = _nextUpdateId++;
+    _pendingUpdates[id] = update;
+    snowplow(_applyUpdateCommand, id.toJS);
+  }
 
   /// Adds a JavaScript plugin that sends the arguments of its afterTrack
   /// callbacks to [afterTrackListener] and adds the [entities] to events.
@@ -84,11 +122,14 @@ class SnowplowTrackerController {
     } else {
       listeners[identifier] = afterTrackListener;
     }
-    final pluginEntities = _pluginEntities.putIfAbsent(tracker, () => {});
+    final withEntities = _pluginsWithEntities.putIfAbsent(tracker, () => {});
     if (entities == null) {
-      pluginEntities.remove(identifier);
+      withEntities.remove(identifier);
+      _updateEntities(() => _pluginEntities[tracker]?.remove(identifier));
     } else {
-      pluginEntities[identifier] = entities;
+      withEntities.add(identifier);
+      _updateEntities(() => _pluginEntities.putIfAbsent(
+          tracker, () => {})[identifier] = entities);
     }
 
     if (!_addedPlugins.putIfAbsent(tracker, () => {}).add(identifier)) {
@@ -109,26 +150,31 @@ class SnowplowTrackerController {
         (_pluginEntities[tracker]?[identifier] ?? const []).jsify()).toJS;
     final pluginFactory = JSObject();
     pluginFactory['create'] = (() => plugin).toJS;
+    // other properties of the factory become commands of the JavaScript tracker
+    pluginFactory[_applyUpdateCommand] = ((JSNumber id, JSAny? trackers) {
+      _pendingUpdates.remove(id.toDartInt)?.call();
+    }).toJS;
     snowplow('addPlugin:$tracker', pluginFactory, 'create'.toJS);
+    _applyUpdateCommandRegistered = true;
   }
 
   /// Replaces the entities of a plugin that was added with entities.
   static void setPluginEntities(
       String tracker, String identifier, List<Object?> entities) {
-    final pluginEntities = _pluginEntities[tracker];
-    if (pluginEntities?.containsKey(identifier) != true) {
+    if (_pluginsWithEntities[tracker]?.contains(identifier) != true) {
       debugPrint("SnowplowTracker: setPluginEntities: no plugin '$identifier' "
           "with entities in tracker '$tracker', ignoring");
       return;
     }
-    pluginEntities![identifier] = entities;
+    _updateEntities(() => _pluginEntities[tracker]?[identifier] = entities);
   }
 
   /// Stops calling the plugin's afterTrack listener and adding its entities,
   /// as the JavaScript tracker can't remove plugins.
   static void removePlugin(String tracker, String identifier) {
     _afterTrackListeners[tracker]?.remove(identifier);
-    _pluginEntities[tracker]?.remove(identifier);
+    _pluginsWithEntities[tracker]?.remove(identifier);
+    _updateEntities(() => _pluginEntities[tracker]?.remove(identifier));
   }
 
   static void trackEvent(EventMessageReader message) {

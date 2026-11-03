@@ -174,19 +174,23 @@ void main() {
     ]);
 
     expect(
-        calls.single.arguments['plugins'],
-        equals([
-          {
-            'identifier': 'p1',
-            'entities': [
-              {
-                'schema': 'iglu:com.acme/guest/jsonschema/1-0-0',
-                'data': {'id': 'a'}
-              }
-            ]
-          },
-          {'identifier': 'p2', 'entities': []},
-        ]));
+        calls.single,
+        isMethodCall('createTracker', arguments: {
+          'namespace': 'ns8',
+          'networkConfig': {'endpoint': 'e1'},
+          'plugins': [
+            {
+              'identifier': 'p1',
+              'entities': [
+                {
+                  'schema': 'iglu:com.acme/guest/jsonschema/1-0-0',
+                  'data': {'id': 'a'}
+                }
+              ]
+            },
+            {'identifier': 'p2', 'entities': []},
+          ]
+        }));
   });
 
   test('adds plugin with entities and afterTrack at runtime', () async {
@@ -201,18 +205,20 @@ void main() {
               schema: 'iglu:com.acme/guest/jsonschema/1-0-0', data: {'id': 'a'})
         ]));
 
-    expect(calls.last.method, equals('addPlugin'));
     expect(
-        calls.last.arguments['plugin'],
-        equals({
-          'identifier': 'p1',
-          'afterTrack': true,
-          'entities': [
-            {
-              'schema': 'iglu:com.acme/guest/jsonschema/1-0-0',
-              'data': {'id': 'a'}
-            }
-          ]
+        calls.last,
+        isMethodCall('addPlugin', arguments: {
+          'tracker': 'ns9',
+          'plugin': {
+            'identifier': 'p1',
+            'afterTrack': true,
+            'entities': [
+              {
+                'schema': 'iglu:com.acme/guest/jsonschema/1-0-0',
+                'data': {'id': 'a'}
+              }
+            ]
+          }
         }));
   });
 
@@ -225,10 +231,9 @@ void main() {
           schema: 'iglu:com.acme/guest/jsonschema/1-0-0', data: {'id': 'b'})
     ]);
 
-    expect(calls.last.method, equals('setPluginEntities'));
     expect(
-        calls.last.arguments,
-        equals({
+        calls.last,
+        isMethodCall('setPluginEntities', arguments: {
           'tracker': 'ns10',
           'identifier': 'p1',
           'entities': [
@@ -246,7 +251,12 @@ void main() {
 
     await tracker.setPluginEntities('p1', const []);
 
-    expect(calls.last.arguments,
-        equals({'tracker': 'ns11', 'identifier': 'p1', 'entities': []}));
+    expect(
+        calls.last,
+        isMethodCall('setPluginEntities', arguments: {
+          'tracker': 'ns11',
+          'identifier': 'p1',
+          'entities': []
+        }));
   });
 }

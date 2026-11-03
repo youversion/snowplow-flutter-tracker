@@ -104,6 +104,19 @@ class PluginEntitiesStoreTest {
     }
 
     @Test
+    fun stopsWaitingWhenTheClockMovesBackwardsDuringSet() {
+        val wallNow = 5_000L
+        val store = PluginEntitiesStore(entity("a"), monotonicClock = { monotonicNow }, wallClock = { wallNow }, now = 1_000)
+        val started = System.nanoTime()
+        // set() read 6_000, then the clock moved back to 5_000 and stays there
+        store.set(entity("b"), now = 6_000)
+
+        assertTrue(System.nanoTime() - started < 100_000_000)
+        assertEquals("b", idAt(store, 2_000))
+        assertEquals("b", idAt(store, wallNow))
+    }
+
+    @Test
     fun keepsAtMostTheMaximumNumberOfValues() {
         val store = store(entity("0"), now = 0)
         for (i in 1..40) {

@@ -26,7 +26,8 @@ import com.snowplowanalytics.snowplow.payload.SelfDescribingJson
 class PluginEntitiesStore(
     entities: List<SelfDescribingJson>,
     private val monotonicClock: () -> Long = SystemClock::elapsedRealtime,
-    now: Long = System.currentTimeMillis()
+    private val wallClock: () -> Long = System::currentTimeMillis,
+    now: Long = wallClock()
 ) {
 
     /// [replacedAt] is the [monotonicClock] time the value was replaced, null for the current value
@@ -41,9 +42,10 @@ class PluginEntitiesStore(
     /// Events tracked before this call, even in the same millisecond, keep the
     /// previous entities. It returns once the wall clock reaches the next
     /// millisecond, at most 1 ms later, so events tracked after it get the
-    /// new entities.
+    /// new entities. If the wall clock moves backwards meanwhile, it stops
+    /// waiting after [MAX_WAIT_NANOS] and keeps only the new entities.
     @Synchronized
-    fun set(entities: List<SelfDescribingJson>, now: Long = System.currentTimeMillis()) {
+    fun set(entities: List<SelfDescribingJson>, now: Long = wallClock()) {
         val since = now + 1
         val current = history
         val replacedAt = monotonicClock()
@@ -55,8 +57,13 @@ class PluginEntitiesStore(
             val replaced = current.last().let { Entry(it.since, it.entities, replacedAt) }
             (retained + replaced + Entry(since, entities)).takeLast(MAX_ENTRIES)
         }
-        while (System.currentTimeMillis() < since) {
+        val deadline = System.nanoTime() + MAX_WAIT_NANOS
+        while (wallClock() < since && System.nanoTime() < deadline) {
             Thread.yield()
+        }
+        if (wallClock() < since) {
+            // the wall clock moved backwards, later events would get the previous values
+            history = listOf(Entry(wallClock(), entities))
         }
     }
 
@@ -80,5 +87,8 @@ class PluginEntitiesStore(
         /// How long a value is kept after it is replaced
         const val RETENTION_MS = 60_000L
         const val MAX_ENTRIES = 16
+
+        /// Longest [set] waits for the wall clock to reach the next millisecond
+        const val MAX_WAIT_NANOS = 2_000_000L
     }
 }
