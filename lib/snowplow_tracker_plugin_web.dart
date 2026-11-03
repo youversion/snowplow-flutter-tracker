@@ -69,6 +69,8 @@ class SnowplowTrackerPluginWeb {
       case 'setPluginEntities':
         return onSetPluginEntities(call);
       case 'removePlugin':
+        // The JavaScript tracker can't remove plugins, so the controller stops
+        // calling the plugin's afterTrack listener and adding its entities.
         return onRemovePlugin(call);
       case "getSessionUserId":
         return onGetSessionUserId(call);

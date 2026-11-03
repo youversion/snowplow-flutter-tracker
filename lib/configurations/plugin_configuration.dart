@@ -41,8 +41,10 @@ class PluginConfiguration {
   ///
   /// Use [Snowplow.setPluginEntities] to replace them later in a single step,
   /// for example when the user signs in. Each event gets the entities that
-  /// were set when it was tracked. To be able to replace them later, pass an
-  /// empty list if the plugin starts without entities.
+  /// were set when it was tracked.
+  ///
+  /// [Snowplow.setPluginEntities] only works for plugins created with
+  /// entities. Pass an empty list to start with none.
   final List<SelfDescribing>? entities;
 
   const PluginConfiguration(

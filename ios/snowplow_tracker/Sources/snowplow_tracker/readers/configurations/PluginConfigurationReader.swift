@@ -14,7 +14,6 @@ import SnowplowTracker
 struct PluginConfigurationReader: Decodable {
     let identifier: String
     let afterTrack: Bool?
-    let entities: [SelfDescribingJsonReader]?
 }
 
 extension PluginConfigurationReader {
@@ -31,15 +30,19 @@ extension PluginConfigurationReader {
         return plugin
     }
 
-    /// Reads the entities from the plugin arguments, as the reader only decodes their schemas
+    /// Reads the entities from the plugin arguments, as `Decodable` can't decode their data
     static func entities(arguments: [String: Any]) -> [SelfDescribingJson]? {
         guard let entitiesArgs = arguments["entities"] as? [[String: Any]] else {
             return nil
         }
         return entitiesArgs.compactMap { entityArgs in
-            (entityArgs["schema"] as? String).flatMap { schema in
+            let entity = (entityArgs["schema"] as? String).flatMap { schema in
                 SelfDescribingJsonReader(schema: schema).toSelfDescribingJson(arguments: entityArgs)
             }
+            if entity == nil {
+                NSLog("SnowplowTracker: skipping plugin entity without a schema or data map: %@", "\(entityArgs)")
+            }
+            return entity
         }
     }
 }

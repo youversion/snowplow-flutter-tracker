@@ -137,7 +137,8 @@ class Snowplow {
   /// Events tracked after this call get the new [entities], events tracked
   /// before it keep the previous ones, including events the tracker creates
   /// on its own. The plugin must have been added with
-  /// [PluginConfiguration.entities], otherwise nothing happens.
+  /// [PluginConfiguration.entities], otherwise nothing happens and a warning
+  /// is logged.
   static Future<void> setPluginEntities(
       String identifier, List<SelfDescribing> entities,
       {required String tracker}) async {
@@ -149,6 +150,10 @@ class Snowplow {
   }
 
   /// Removes the plugin with the given [identifier] from the [tracker] namespace.
+  ///
+  /// On Android, the tracker looks up plugins when it processes an event, so
+  /// events tracked just before this call that it hasn't processed yet don't
+  /// get the plugin's entities or afterTrack callback either.
   static Future<void> removePlugin(String identifier,
       {required String tracker}) async {
     _afterTrackCallbacks[tracker]?.remove(identifier);

@@ -177,9 +177,14 @@ class SnowplowTrackerController {
     /// Adds the plugin again with the new entities.
     ///
     /// The tracker adds plugins and tracks events on the same serial queue, so
-    /// events tracked before this call keep the previous entities.
+    /// events tracked before this call keep the previous entities. Adding the
+    /// plugin waits on the calling thread until the events already queued are
+    /// processed, so frequent calls while the queue is busy can briefly block
+    /// the main thread, as `addPlugin` does.
     static func setPluginEntities(_ message: SetPluginEntitiesMessageReader, arguments: [String: Any]) {
         guard let stored = pluginsWithEntities[message.tracker]?[message.identifier] else {
+            NSLog("SnowplowTracker: setPluginEntities: no plugin '%@' with entities in tracker '%@', ignoring",
+                  message.identifier, message.tracker)
             return
         }
         let entities = PluginConfigurationReader.entities(arguments: arguments) ?? []

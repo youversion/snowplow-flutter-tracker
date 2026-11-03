@@ -10,6 +10,7 @@
 // See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
 
 import 'dart:js_interop';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'dart:js_interop_unsafe';
 import 'package:web/web.dart' show document;
 
@@ -115,9 +116,12 @@ class SnowplowTrackerController {
   static void setPluginEntities(
       String tracker, String identifier, List<Object?> entities) {
     final pluginEntities = _pluginEntities[tracker];
-    if (pluginEntities?.containsKey(identifier) == true) {
-      pluginEntities![identifier] = entities;
+    if (pluginEntities?.containsKey(identifier) != true) {
+      debugPrint("SnowplowTracker: setPluginEntities: no plugin '$identifier' "
+          "with entities in tracker '$tracker', ignoring");
+      return;
     }
+    pluginEntities![identifier] = entities;
   }
 
   /// Stops calling the plugin's afterTrack listener and adding its entities,

@@ -12,6 +12,7 @@
 package com.snowplowanalytics.snowplow_tracker
 
 import android.content.Context
+import android.util.Log
 import com.snowplowanalytics.core.event.WebViewReader
 
 import com.snowplowanalytics.snowplow.Snowplow;
@@ -25,6 +26,8 @@ import com.snowplowanalytics.snowplow.globalcontexts.GlobalContext
 import com.snowplowanalytics.snowplow.tracker.InspectableEvent
 
 object SnowplowTrackerController {
+
+    private const val TAG = "SnowplowTracker"
 
     /// Receives the arguments of the afterTrack callbacks to send to Dart
     var afterTrackListener: ((Map<String, Any?>) -> Unit)? = null
@@ -149,7 +152,12 @@ object SnowplowTrackerController {
     }
 
     fun setPluginEntities(messageReader: SetPluginEntitiesMessageReader) {
-        pluginEntities[Pair(messageReader.tracker, messageReader.identifier)]?.set(messageReader.entities)
+        val store = pluginEntities[Pair(messageReader.tracker, messageReader.identifier)]
+        if (store == null) {
+            Log.w(TAG, "setPluginEntities: no plugin '${messageReader.identifier}' with entities in tracker '${messageReader.tracker}', ignoring")
+            return
+        }
+        store.set(messageReader.entities)
     }
 
     fun removePlugin(messageReader: RemovePluginMessageReader) {

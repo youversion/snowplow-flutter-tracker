@@ -69,6 +69,8 @@ class SnowplowTracker {
   }
 
   /// Removes the plugin with the given [identifier].
+  ///
+  /// See [Snowplow.removePlugin].
   Future<void> removePlugin(String identifier) async {
     await Snowplow.removePlugin(identifier, tracker: namespace);
   }
