@@ -152,8 +152,11 @@ void main() {
     await tracker?.track(const Structured(category: 'after-swap', action: 'a'));
 
     await waitForEvent((e) => e.payload['se_ca'] == 'after-swap');
-    await waitForEvent((e) =>
-        e.payload['se_ca'] == 'before-swap' && e.payload['se_la'] == '19');
+    // afterTrack isn't called in the order the events were tracked on Android
+    for (var i = 0; i < 20; i++) {
+      await waitForEvent((e) =>
+          e.payload['se_ca'] == 'before-swap' && e.payload['se_la'] == '$i');
+    }
     final before = events.where((e) => e.payload['se_ca'] == 'before-swap');
     expect(before, hasLength(20));
     for (final event in before) {
