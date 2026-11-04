@@ -77,8 +77,8 @@ void main() {
     await _engines.invokeMethod('startSecondaryEngine', 'secondaryEngineMain');
     await _engines.invokeMethod('destroySecondaryEngine');
 
-    await tracker?.track(
-        const Structured(category: 'secondary-destroyed', action: 'a'));
+    await tracker
+        ?.track(const Structured(category: 'secondary-destroyed', action: 'a'));
     await waitForEvent('secondary-destroyed');
   }, skip: skip);
 }
